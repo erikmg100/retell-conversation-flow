@@ -623,9 +623,6 @@
         </div>
     </div>
 
-    <!-- Load Retell SDK -->
-    <script src="https://unpkg.com/retell-client-js-sdk@1.3.3/dist/retell-client-js-sdk.min.js"></script>
-
     <script>
         // Global variables
         let draggedElement = null;
@@ -636,6 +633,50 @@
         // Retell AI variables
         let retellWebClient;
         let isCallActive = false;
+        let retellSDKLoaded = false;
+
+        // Load Retell SDK with multiple fallbacks
+        function loadRetellSDK() {
+            return new Promise((resolve, reject) => {
+                // Method 1: Try unpkg CDN
+                const script1 = document.createElement('script');
+                script1.src = 'https://unpkg.com/retell-client-js-sdk@1.3.3/dist/retell-client-js-sdk.min.js';
+                script1.onload = function() {
+                    console.log('✅ Retell SDK loaded from unpkg');
+                    retellSDKLoaded = true;
+                    resolve();
+                };
+                script1.onerror = function() {
+                    console.log('❌ unpkg failed, trying jsDelivr...');
+                    // Method 2: Try jsDelivr CDN
+                    const script2 = document.createElement('script');
+                    script2.src = 'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@1.3.3/dist/retell-client-js-sdk.min.js';
+                    script2.onload = function() {
+                        console.log('✅ Retell SDK loaded from jsDelivr');
+                        retellSDKLoaded = true;
+                        resolve();
+                    };
+                    script2.onerror = function() {
+                        console.log('❌ jsDelivr failed, trying alternative...');
+                        // Method 3: Try alternative CDN
+                        const script3 = document.createElement('script');
+                        script3.src = 'https://cdn.skypack.dev/retell-client-js-sdk@1.3.3';
+                        script3.onload = function() {
+                            console.log('✅ Retell SDK loaded from Skypack');
+                            retellSDKLoaded = true;
+                            resolve();
+                        };
+                        script3.onerror = function() {
+                            console.log('❌ All CDNs failed');
+                            reject(new Error('All CDNs failed to load Retell SDK'));
+                        };
+                        document.head.appendChild(script3);
+                    };
+                    document.head.appendChild(script2);
+                };
+                document.head.appendChild(script1);
+            });
+        }
 
         // Initialize drag and drop functionality
         function initializeDragAndDrop() {
@@ -711,6 +752,12 @@
 
         async function startVoiceCall() {
             const voiceBtn = document.getElementById('voiceBtn');
+            
+            // Check if SDK is loaded
+            if (!retellSDKLoaded || typeof RetellWebClient === 'undefined') {
+                alert('Retell SDK is not loaded. Please refresh the page and try again.');
+                return;
+            }
             
             try {
                 updateCallStatus('connecting', 'Connecting...');
@@ -1086,7 +1133,18 @@
         }
 
         // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Load Retell SDK first
+            try {
+                await loadRetellSDK();
+                console.log('Retell SDK loaded successfully');
+                document.getElementById('voiceBtn').innerHTML = '<span>🎤</span> Start Voice Call';
+            } catch (error) {
+                console.error('Failed to load Retell SDK:', error);
+                document.getElementById('voiceBtn').innerHTML = '<span>⚠️</span> SDK Failed';
+                document.getElementById('voiceBtn').disabled = true;
+            }
+            
             initializeDragAndDrop();
             
             // Set up initial connections from welcome to caller types
@@ -1100,14 +1158,6 @@
                     closeModal();
                 }
             });
-
-            // Check if Retell SDK is loaded
-            if (typeof RetellWebClient === 'undefined') {
-                console.error('Retell SDK not loaded. Please check your internet connection.');
-                document.getElementById('voiceBtn').innerHTML = '<span>⚠️</span> SDK Loading...';
-            } else {
-                console.log('Retell SDK loaded successfully');
-            }
         });
     </script>
 </body>
