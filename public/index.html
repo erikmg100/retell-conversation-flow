@@ -623,8 +623,60 @@
         </div>
     </div>
 
-    <!-- Retell AI SDK - Local Copy with Fallback -->
-    <script src="/js/retell-sdk.js"></script>
+   <!-- Retell AI SDK - Multiple Loading Methods -->
+<script>
+// Method 1: Try direct CDN
+(function() {
+    const script1 = document.createElement('script');
+    script1.src = 'https://unpkg.com/retell-client-js-sdk@1.3.3/dist/retell-client-js-sdk.min.js';
+    script1.onload = function() {
+        console.log('✅ Retell SDK loaded from unpkg');
+        window.retellSDKReady = true;
+    };
+    script1.onerror = function() {
+        console.log('❌ unpkg failed, trying jsDelivr...');
+        // Method 2: Try alternative CDN
+        const script2 = document.createElement('script');
+        script2.src = 'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@1.3.3/dist/retell-client-js-sdk.min.js';
+        script2.onload = function() {
+            console.log('✅ Retell SDK loaded from jsDelivr');
+            window.retellSDKReady = true;
+        };
+        script2.onerror = function() {
+            console.log('❌ All CDNs failed, using working alternative...');
+            // Method 3: Load from working CDN
+            const script3 = document.createElement('script');
+            script3.src = 'https://cdn.skypack.dev/retell-client-js-sdk@1.3.3';
+            script3.onload = function() {
+                console.log('✅ Retell SDK loaded from Skypack');
+                window.retellSDKReady = true;
+            };
+            script3.onerror = function() {
+                console.log('❌ Creating mock client for testing');
+                createMockClient();
+            };
+            document.head.appendChild(script3);
+        };
+        document.head.appendChild(script2);
+    };
+    document.head.appendChild(script1);
+})();
+
+function createMockClient() {
+    // This should not be needed if the CDN works
+    window.RetellWebClient = function() {
+        return {
+            startCall: function(config) {
+                alert('SDK Loading Failed - Backend is working but voice SDK unavailable. Your system is correctly configured!');
+                return Promise.resolve();
+            },
+            stopCall: function() { return Promise.resolve(); },
+            on: function() {}
+        };
+    };
+    window.retellSDKReady = true;
+}
+</script>
     <script>
     // Check if Retell SDK loaded from local file
     setTimeout(function() {
@@ -816,95 +868,77 @@
             }
         }
 
-        async function startVoiceCall() {
-            const voiceBtn = document.getElementById('voiceBtn');
-            
-            try {
-                // Show connecting status
-                updateCallStatus('connecting', 'Connecting...');
-                
-                // Get current conversation flow
-                const flowData = collectFlowData();
-                console.log('Starting call with flow:', flowData);
-                
-                // Try to get access token from backend
-                const response = await fetch('/api/create-web-call', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ flowData })
-                });
-                
-                if (!response.ok) {
-                    throw new Error('Backend server not available');
-                }
-                
-                const { accessToken, callId } = await response.json();
-                
-                if (!accessToken || accessToken.includes('mock')) {
-                    throw new Error('API key not configured on backend');
-                }
-                
-                // Initialize Retell client
-                retellWebClient = new RetellWebClient();
-                
-                // Set up event listeners
-                retellWebClient.on('call_started', () => {
-                    console.log('Call started');
-                    updateCallStatus('connected', 'Connected');
-                    voiceBtn.innerHTML = '<span>🔴</span> End Call';
-                    voiceBtn.classList.add('active');
-                    isCallActive = true;
-                });
-                
-                retellWebClient.on('call_ended', () => {
-                    console.log('Call ended');
-                    resetCallUI();
-                });
-                
-                retellWebClient.on('error', (error) => {
-                    console.error('Retell error:', error);
-                    updateCallStatus('error', 'Call Error');
-                    resetCallUI();
-                });
-                
-                retellWebClient.on('update', (update) => {
-                    console.log('Call update:', update);
-                });
-                
-                // Start the call
-                await retellWebClient.startCall({
-                    accessToken: accessToken,
-                    sampleRate: 24000,
-                    enableUpdate: true,
-                });
-                
-            } catch (error) {
-                console.error('Error starting voice call:', error);
-                updateCallStatus('error', 'Setup Required');
-                resetCallUI();
-                
-                // Show helpful error message
-                if (error.message.includes('Backend server')) {
-                    alert('Backend server is not running. Please start your server first.');
-                } else if (error.message.includes('API key')) {
-                    alert('API key not configured. Please set up your Retell AI API key in the backend.');
-                } else {
-                    alert('Failed to start voice call: ' + error.message);
-                }
-            }
+async function startVoiceCall() {
+    const voiceBtn = document.getElementById('voiceBtn');
+    
+    // Wait for SDK to load
+    if (!window.retellSDKReady) {
+        alert('SDK still loading, please try again in a moment...');
+        return;
+    }
+    
+    try {
+        updateCallStatus('connecting', 'Connecting...');
+        const flowData = collectFlowData();
+        console.log('Starting call with flow:', flowData);
+        
+        const response = await fetch('/api/create-web-call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ flowData })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Backend server not available');
         }
-
-        async function endVoiceCall() {
-            try {
-                if (retellWebClient) {
-                    await retellWebClient.stopCall();
-                }
-                resetCallUI();
-            } catch (error) {
-                console.error('Error ending call:', error);
-                resetCallUI();
-            }
+        
+        const { accessToken, callId } = await response.json();
+        
+        if (!accessToken || accessToken.includes('mock')) {
+            throw new Error('API key not configured on backend');
         }
+        
+        // Initialize Retell client
+        retellWebClient = new RetellWebClient();
+        
+        // Set up event listeners
+        retellWebClient.on('call_started', () => {
+            console.log('Call started');
+            updateCallStatus('connected', 'Connected - Speaking!');
+            voiceBtn.innerHTML = '<span>🔴</span> End Call';
+            voiceBtn.classList.add('active');
+            isCallActive = true;
+        });
+        
+        retellWebClient.on('call_ended', () => {
+            console.log('Call ended');
+            resetCallUI();
+        });
+        
+        retellWebClient.on('error', (error) => {
+            console.error('Retell error:', error);
+            updateCallStatus('error', 'Call Error');
+            resetCallUI();
+        });
+        
+        retellWebClient.on('update', (update) => {
+            console.log('Call update:', update);
+        });
+        
+        // Start the call
+        await retellWebClient.startCall({
+            accessToken: accessToken,
+            sampleRate: 24000,
+            enableUpdate: true,
+        });
+        
+    } catch (error) {
+        console.error('Error starting voice call:', error);
+        updateCallStatus('error', 'Setup Required');
+        resetCallUI();
+        alert('Failed to start voice call: ' + error.message);
+    }
+}
 
         function resetCallUI() {
             const voiceBtn = document.getElementById('voiceBtn');
