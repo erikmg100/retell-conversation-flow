@@ -3,10 +3,10 @@ import cors from 'cors';
 
 const app = express();
 
-// Configure CORS
+// Configure CORS - Updated with your correct frontend domain
 app.use(cors({
   origin: [
-    'https://retell-flow-backend.vercel.app', // Update this to your new domain
+    'https://retell-conversation-frontend.vercel.app',
     'http://localhost:3000',
     'http://localhost:5173'
   ],
