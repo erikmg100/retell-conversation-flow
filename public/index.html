@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversation Flow Builder with Voice</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .flow-container {
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+            padding: 10px 0;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: clamp(1.8rem, 4vw, 2.5rem);
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: clamp(0.9rem, 2vw, 1.1rem);
+        }
+
+        .flow-canvas {
+            position: relative;
+            flex: 1;
+            background: 
+                radial-gradient(circle at 25px 25px, rgba(102, 126, 234, 0.1) 2px, transparent 0),
+                radial-gradient(circle at 75px 75px, rgba(118, 75, 162, 0.1) 2px, transparent 0);
+            background-size: 100px 100px;
+            border-radius: 15px;
+            padding: 20px;
+            overflow: auto;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .node {
+            position: absolute;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            padding: 20px;
+            min-width: 200px;
+            max-width: 300px;
+            cursor: move;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .node:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.2);
+            border-color: #667eea;
+        }
+
+        .node.selected {
+            border-color: #764ba2;
+            box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.3);
+        }
+
+        .node.welcome {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .node.caller-type {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            color: white;
+        }
+
+        .node.response {
+            background: linear-gradient(135deg, #4facfe, #00f2fe);
+            color: white;
+        }
+
+        .wait-indicator {
+            position: absolute;
+            background: linear-gradient(135deg, #ffecd2, #fcb69f);
+            color: #8b4513;
+            border: 2px solid #d4a574;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 500;
+            z-index: 5;
+            box-shadow: 0 2px 8px rgba(212, 165, 116, 0.4);
+            pointer-events: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transform: translate(-50%, -50%);
+            white-space: nowrap;
+        }
+
+        .node-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .node-type {
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            opacity: 0.8;
+        }
+
+        .node-controls {
+            display: flex;
+            gap: 5px;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        .node-content {
+            position: relative;
+        }
+
+        .node-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            background: none;
+            border: none;
+            color: inherit;
+            width: 100%;
+            outline: none;
+        }
+
+        .node-title:focus {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            padding: 5px;
+        }
+
+        .node-description {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            background: none;
+            border: none;
+            color: inherit;
+            width: 100%;
+            resize: none;
+            outline: none;
+            min-height: 40px;
+        }
+
+        .node-description:focus {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            padding: 5px;
+        }
+
+        .connection-line {
+            position: absolute;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            z-index: 1;
+            border-radius: 3px;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .connection-line::before {
+            content: '';
+            position: absolute;
+            right: -8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-left: 8px solid #764ba2;
+            border-top: 6px solid transparent;
+            border-bottom: 6px solid transparent;
+        }
+
+        .connection-dot {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border-radius: 50%;
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+            }
+            50% {
+                transform: scale(1.2);
+                box-shadow: 0 4px 16px rgba(102, 126, 234, 0.6);
+            }
+        }
+
+        .add-branch-btn {
+            position: absolute;
+            bottom: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .add-branch-btn:hover {
+            background: #764ba2;
+            transform: translateX(-50%) scale(1.1);
+        }
+
+        .toolbar {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        .toolbar-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toolbar-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .toolbar-btn.voice-btn {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+        }
+
+        .toolbar-btn.voice-btn:hover {
+            box-shadow: 0 8px 20px rgba(255, 107, 107, 0.4);
+        }
+
+        .toolbar-btn.voice-btn.active {
+            background: linear-gradient(135deg, #00b894, #00a085);
+            animation: pulseVoice 2s infinite;
+        }
+
+        @keyframes pulseVoice {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .call-status {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: linear-gradient(135deg, #00b894, #00a085);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            z-index: 1001;
+            box-shadow: 0 4px 12px rgba(0, 184, 148, 0.4);
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .call-status.error {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+        }
+
+        .call-status.connecting {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: white;
+            animation: pulse 1s infinite;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            min-width: 400px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal h3 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #666;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 0;
+            }
+            
+            .flow-container {
+                padding: 10px;
+                border-radius: 0;
+            }
+            
+            .header {
+                margin-bottom: 15px;
+                padding: 5px 0;
+            }
+            
+            .header h1 {
+                font-size: 1.8rem;
+                margin-bottom: 5px;
+            }
+            
+            .header p {
+                font-size: 0.9rem;
+            }
+            
+            .toolbar {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                top: auto;
+                border-radius: 15px 15px 0 0;
+                flex-direction: row;
+                justify-content: space-around;
+                padding: 10px;
+                max-height: 80px;
+                overflow-x: auto;
+                overflow-y: hidden;
+            }
+            
+            .toolbar-btn {
+                flex: 1;
+                margin: 0 5px;
+                padding: 8px 12px;
+                font-size: 0.8rem;
+                min-width: 80px;
+                white-space: nowrap;
+            }
+            
+            .flow-canvas {
+                padding: 15px;
+                margin-bottom: 100px;
+            }
+            
+            .node {
+                min-width: 180px;
+                max-width: 280px;
+                padding: 15px;
+            }
+            
+            .call-status {
+                top: 10px;
+                left: 10px;
+                padding: 8px 15px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="flow-container">
+        <div class="header">
+            <h1>Conversation Flow Builder</h1>
+            <p>Design your conversational workflow with drag-and-drop simplicity</p>
+        </div>
+
+        <div class="toolbar">
+            <button class="toolbar-btn" onclick="addNode('caller-type')">
+                <span>+</span> Add Caller Type
+            </button>
+            <button class="toolbar-btn" onclick="addNode('response')">
+                <span>+</span> Add Response
+            </button>
+            <button class="toolbar-btn voice-btn" id="voiceBtn" onclick="toggleVoiceCall()">
+                <span>🎤</span> Start Voice Call
+            </button>
+            <button class="toolbar-btn" onclick="exportFlow()">
+                <span>📥</span> Export
+            </button>
+            <button class="toolbar-btn" onclick="clearCanvas()">
+                <span>🗑️</span> Clear
+            </button>
+        </div>
+
+        <!-- Call Status Indicator -->
+        <div class="call-status" id="callStatus">
+            <div class="status-indicator"></div>
+            <span id="statusText">Connecting...</span>
+        </div>
+
+        <div class="flow-canvas" id="flowCanvas">
+            <!-- Welcome node -->
+            <div class="node welcome" id="welcome" style="top: 20px; left: calc(50% - 150px);">
+                <div class="node-header">
+                    <span class="node-type">Welcome</span>
+                </div>
+                <div class="node-content">
+                    <input type="text" class="node-title" value="Welcome Message" onchange="updateNode(this)">
+                    <textarea class="node-description" placeholder="Tell us what we should say here..." onchange="updateNode(this)">Hello! How can we help you today?</textarea>
+                </div>
+                <button class="add-branch-btn" onclick="addBranch('welcome')">+</button>
+            </div>
+
+            <!-- Default caller type nodes -->
+            <div class="node caller-type" id="new-caller" style="top: 180px; left: calc(20% - 100px);">
+                <div class="node-header">
+                    <span class="node-type">Caller Type</span>
+                    <div class="node-controls">
+                        <button class="control-btn" onclick="deleteNode('new-caller')" title="Delete">×</button>
+                    </div>
+                </div>
+                <div class="node-content">
+                    <input type="text" class="node-title" value="New Caller" onchange="updateNode(this)">
+                    <textarea class="node-description" placeholder="Tell us what we should say here..." onchange="updateNode(this)">I see you're a new caller. Let me help you get started. What can I assist you with today?</textarea>
+                </div>
+                <button class="add-branch-btn" onclick="addBranch('new-caller')">+</button>
+            </div>
+
+            <div class="node caller-type" id="existing-client" style="top: 180px; left: calc(50% - 150px);">
+                <div class="node-header">
+                    <span class="node-type">Caller Type</span>
+                    <div class="node-controls">
+                        <button class="control-btn" onclick="deleteNode('existing-client')" title="Delete">×</button>
+                    </div>
+                </div>
+                <div class="node-content">
+                    <input type="text" class="node-title" value="Existing Client" onchange="updateNode(this)">
+                    <textarea class="node-description" placeholder="Tell us what we should say here..." onchange="updateNode(this)">Welcome back! How can I help you today?</textarea>
+                </div>
+                <button class="add-branch-btn" onclick="addBranch('existing-client')">+</button>
+            </div>
+
+            <div class="node caller-type" id="other" style="top: 180px; left: calc(80% - 100px);">
+                <div class="node-header">
+                    <span class="node-type">Caller Type</span>
+                    <div class="node-controls">
+                        <button class="control-btn" onclick="deleteNode('other')" title="Delete">×</button>
+                    </div>
+                </div>
+                <div class="node-content">
+                    <input type="text" class="node-title" value="Other" onchange="updateNode(this)">
+                    <textarea class="node-description" placeholder="Tell us what we should say here..." onchange="updateNode(this)">I'm here to help. Could you tell me more about what you need assistance with?</textarea>
+                </div>
+                <button class="add-branch-btn" onclick="addBranch('other')">+</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for adding nodes -->
+    <div class="modal" id="nodeModal">
+        <div class="modal-content">
+            <h3>Add New Node</h3>
+            <div class="form-group">
+                <label>Node Type:</label>
+                <select id="nodeType">
+                    <option value="caller-type">Caller Type</option>
+                    <option value="response">Response</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Title:</label>
+                <input type="text" id="nodeTitle" placeholder="Enter node title">
+            </div>
+            <div class="form-group">
+                <label>Description:</label>
+                <textarea id="nodeDescription" placeholder="Enter description" rows="3"></textarea>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="createNode()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Retell AI SDK - Local Copy with Fallback -->
+    <script src="/js/retell-sdk.js"></script>
+    <script>
+    // Check if Retell SDK loaded from local file
+    setTimeout(function() {
+        if (typeof RetellWebClient !== 'undefined') {
+            console.log('✅ Retell SDK loaded successfully from local file');
+            window.retellSDKLoaded = true;
+        } else {
+            console.log('❌ Local SDK failed, trying CDN fallback...');
+            loadFromCDN();
+        }
+    }, 100);
+
+    function loadFromCDN() {
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/retell-client-js-sdk@1.3.3/dist/retell-client-js-sdk.min.js';
+        
+        script.onload = function() {
+            console.log('✅ Retell SDK loaded successfully from CDN');
+            window.retellSDKLoaded = true;
+        };
+        
+        script.onerror = function() {
+            console.log('❌ CDN also failed, using demo mode...');
+            createFallbackClient();
+        };
+        
+        document.head.appendChild(script);
+    }
+
+    function createFallbackClient() {
+        // Demo client for testing when real SDK unavailable
+        window.RetellWebClient = function() {
+            console.log('🎭 Using DEMO Retell client - Backend integration working!');
+            return {
+                startCall: function(config) {
+                    console.log('🎤 DEMO MODE: Your backend successfully created a web call!');
+                    console.log('✅ Access token received:', config.accessToken.substring(0, 20) + '...');
+                    
+                    // Show success alert
+                    alert(`🎉 SUCCESS! Your integration is working!\n\n✅ Backend v2 API: Connected\n✅ Agent ID: Configured\n✅ Access Token: Received\n\n🎭 This is demo mode since the Retell SDK couldn't load.\n\nIn production, this would:\n• Ask for microphone permission\n• Connect to your voice agent\n• Start the conversation flow`);
+                    
+                    setTimeout(() => {
+                        if (this.onCallStarted) this.onCallStarted();
+                        console.log('📞 Demo: Simulating call start...');
+                    }, 1000);
+                    return Promise.resolve();
+                },
+                stopCall: function() {
+                    console.log('📞 Demo: Call stopped');
+                    if (this.onCallEnded) this.onCallEnded();
+                    return Promise.resolve();
+                },
+                on: function(event, callback) {
+                    console.log('📡 Demo: Event listener added:', event);
+                    if (event === 'call_started') this.onCallStarted = callback;
+                    else if (event === 'call_ended') this.onCallEnded = callback;
+                    else if (event === 'error') this.onError = callback;
+                    else if (event === 'update') this.onUpdate = callback;
+                }
+            };
+        };
+        window.retellSDKLoaded = true;
+        console.log('✅ Demo Retell client ready');
+    }
+    </script>
+
+    <script>
+        // Global variables
+        let draggedElement = null;
+        let nodeCounter = 0;
+        let selectedNode = null;
+        let connectionsMap = new Map();
+        
+        // Retell AI variables
+        let retellWebClient;
+        let isCallActive = false;
+        let currentCallId = null;
+
+        // Configuration - will be loaded from backend
+        let RETELL_CONFIG = {
+            agentId: null,
+            accessToken: null
+        };
+
+        // Function to load configuration from backend
+        async function loadConfiguration() {
+            try {
+                const response = await fetch('/api/agent-config');
+                const config = await response.json();
+                RETELL_CONFIG.agentId = config.agentId;
+                
+                console.log('✅ Configuration loaded:', {
+                    agentId: config.agentId,
+                    hasApiKey: config.hasApiKey
+                });
+                
+                // Update UI based on configuration
+                updateVoiceButtonStatus(config.hasApiKey);
+                
+            } catch (error) {
+                console.error('❌ Failed to load configuration:', error);
+                // If backend isn't available, show setup message
+                updateVoiceButtonStatus(false);
+            }
+        }
+
+        // Function to update voice button based on API key status
+        function updateVoiceButtonStatus(hasApiKey) {
+            const voiceBtn = document.getElementById('voiceBtn');
+            if (!hasApiKey) {
+                voiceBtn.innerHTML = '<span>⚙️</span> Setup Required';
+                voiceBtn.title = 'Backend server and API key required for voice calls';
+            }
+        }
+
+        // Initialize drag and drop functionality
+        function initializeDragAndDrop() {
+            const nodes = document.querySelectorAll('.node');
+            nodes.forEach(node => {
+                node.addEventListener('mousedown', startDrag);
+                node.addEventListener('click', selectNode);
+            });
+        }
+
+        function startDrag(e) {
+            if (e.target.classList.contains('control-btn') || 
+                e.target.classList.contains('add-branch-btn') ||
+                e.target.tagName === 'INPUT' || 
+                e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+            
+            draggedElement = e.currentTarget;
+            draggedElement.style.zIndex = '1000';
+            
+            const rect = draggedElement.getBoundingClientRect();
+            const canvasRect = document.getElementById('flowCanvas').getBoundingClientRect();
+            
+            const offsetX = e.clientX - rect.left;
+            const offsetY = e.clientY - rect.top;
+
+            function drag(e) {
+                const x = e.clientX - canvasRect.left - offsetX;
+                const y = e.clientY - canvasRect.top - offsetY;
+                
+                draggedElement.style.left = Math.max(0, x) + 'px';
+                draggedElement.style.top = Math.max(0, y) + 'px';
+                
+                updateConnections();
+            }
+
+            function stopDrag() {
+                if (draggedElement) {
+                    draggedElement.style.zIndex = '';
+                    draggedElement = null;
+                }
+                document.removeEventListener('mousemove', drag);
+                document.removeEventListener('mouseup', stopDrag);
+            }
+
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDrag);
+        }
+
+        function selectNode(e) {
+            if (e.target.classList.contains('control-btn') || 
+                e.target.classList.contains('add-branch-btn')) {
+                return;
+            }
+            
+            if (selectedNode) {
+                selectedNode.classList.remove('selected');
+            }
+            
+            selectedNode = e.currentTarget;
+            selectedNode.classList.add('selected');
+        }
+
+        // Voice call functionality
+        async function toggleVoiceCall() {
+            const voiceBtn = document.getElementById('voiceBtn');
+            
+            if (isCallActive) {
+                // End the call
+                await endVoiceCall();
+            } else {
+                // Start the call
+                await startVoiceCall();
+            }
+        }
+
+        async function startVoiceCall() {
+            const voiceBtn = document.getElementById('voiceBtn');
+            
+            try {
+                // Show connecting status
+                updateCallStatus('connecting', 'Connecting...');
+                
+                // Get current conversation flow
+                const flowData = collectFlowData();
+                console.log('Starting call with flow:', flowData);
+                
+                // Try to get access token from backend
+                const response = await fetch('/api/create-web-call', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ flowData })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Backend server not available');
+                }
+                
+                const { accessToken, callId } = await response.json();
+                
+                if (!accessToken || accessToken.includes('mock')) {
+                    throw new Error('API key not configured on backend');
+                }
+                
+                // Initialize Retell client
+                retellWebClient = new RetellWebClient();
+                
+                // Set up event listeners
+                retellWebClient.on('call_started', () => {
+                    console.log('Call started');
+                    updateCallStatus('connected', 'Connected');
+                    voiceBtn.innerHTML = '<span>🔴</span> End Call';
+                    voiceBtn.classList.add('active');
+                    isCallActive = true;
+                });
+                
+                retellWebClient.on('call_ended', () => {
+                    console.log('Call ended');
+                    resetCallUI();
+                });
+                
+                retellWebClient.on('error', (error) => {
+                    console.error('Retell error:', error);
+                    updateCallStatus('error', 'Call Error');
+                    resetCallUI();
+                });
+                
+                retellWebClient.on('update', (update) => {
+                    console.log('Call update:', update);
+                });
+                
+                // Start the call
+                await retellWebClient.startCall({
+                    accessToken: accessToken,
+                    sampleRate: 24000,
+                    enableUpdate: true,
+                });
+                
+            } catch (error) {
+                console.error('Error starting voice call:', error);
+                updateCallStatus('error', 'Setup Required');
+                resetCallUI();
+                
+                // Show helpful error message
+                if (error.message.includes('Backend server')) {
+                    alert('Backend server is not running. Please start your server first.');
+                } else if (error.message.includes('API key')) {
+                    alert('API key not configured. Please set up your Retell AI API key in the backend.');
+                } else {
+                    alert('Failed to start voice call: ' + error.message);
+                }
+            }
+        }
+
+        async function endVoiceCall() {
+            try {
+                if (retellWebClient) {
+                    await retellWebClient.stopCall();
+                }
+                resetCallUI();
+            } catch (error) {
+                console.error('Error ending call:', error);
+                resetCallUI();
+            }
+        }
+
+        function resetCallUI() {
+            const voiceBtn = document.getElementById('voiceBtn');
+            const statusDiv = document.getElementById('callStatus');
+            
+            voiceBtn.innerHTML = '<span>🎤</span> Start Voice Call';
+            voiceBtn.classList.remove('active');
+            statusDiv.style.display = 'none';
+            isCallActive = false;
+            currentCallId = null;
+        }
+
+        function updateCallStatus(type, message) {
+            const statusDiv = document.getElementById('callStatus');
+            const statusText = document.getElementById('statusText');
+            
+            statusDiv.className = `call-status ${type}`;
+            statusText.textContent = message;
+            statusDiv.style.display = 'flex';
+            
+            // Auto-hide error status after 3 seconds
+            if (type === 'error') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        function collectFlowData() {
+            const nodes = document.querySelectorAll('.node');
+            const flowData = {
+                nodes: [],
+                connections: Array.from(connectionsMap.entries()).map(([parent, children]) => ({
+                    parent,
+                    children
+                }))
+            };
+            
+            nodes.forEach(node => {
+                const nodeData = {
+                    id: node.id,
+                    type: node.classList.contains('welcome') ? 'welcome' : 
+                          node.classList.contains('caller-type') ? 'caller-type' : 'response',
+                    title: node.querySelector('.node-title').value,
+                    description: node.querySelector('.node-description').value,
+                    position: {
+                        left: node.style.left,
+                        top: node.style.top
+                    }
+                };
+                flowData.nodes.push(nodeData);
+            });
+            
+            return flowData;
+        }
+
+        // Node management functions
+        function addNode(type) {
+            document.getElementById('nodeType').value = type;
+            document.getElementById('nodeModal').style.display = 'flex';
+        }
+
+        function addBranch(parentId) {
+            const parentNode = document.getElementById(parentId);
+            const parentRect = parentNode.getBoundingClientRect();
+            const canvasRect = document.getElementById('flowCanvas').getBoundingClientRect();
+            
+            const newNodeId = 'node-' + (++nodeCounter);
+            const newNode = document.createElement('div');
+            newNode.className = 'node response';
+            newNode.id = newNodeId;
+            
+            const leftPos = parentRect.left - canvasRect.left;
+            const topPos = parentRect.bottom - canvasRect.top + 50;
+            
+            newNode.style.left = leftPos + 'px';
+            newNode.style.top = topPos + 'px';
+            
+            newNode.innerHTML = `
+                <div class="node-header">
+                    <span class="node-type">Response</span>
+                    <div class="node-controls">
+                        <button class="control-btn" onclick="deleteNode('${newNodeId}')" title="Delete">×</button>
+                    </div>
+                </div>
+                <div class="node-content">
+                    <input type="text" class="node-title" value="New Response" onchange="updateNode(this)">
+                    <textarea class="node-description" placeholder="Tell us what we should say here..." onchange="updateNode(this)">What would you like me to help you with?</textarea>
+                </div>
+                <button class="add-branch-btn" onclick="addBranch('${newNodeId}')">+</button>
+            `;
+            
+            document.getElementById('flowCanvas').appendChild(newNode);
+            
+            if (!connectionsMap.has(parentId)) {
+                connectionsMap.set(parentId, []);
+            }
+            connectionsMap.get(parentId).push(newNodeId);
+            
+            newNode.addEventListener('mousedown', startDrag);
+            newNode.addEventListener('click', selectNode);
+            
+            updateConnections();
+        }
+
+        function createNode() {
+            const type = document.getElementById('nodeType').value;
+            const title = document.getElementById('nodeTitle').value || 'New Node';
+            const description = document.getElementById('nodeDescription').value || 'Tell us what we should say here...';
+            
+            const newNodeId = 'node-' + (++nodeCounter);
+            const newNode = document.createElement('div');
+            newNode.className = `node ${type}`;
+            newNode.id = newNodeId;
+            
+            newNode.style.left = 'calc(50% - 150px)';
+            newNode.style.top = '350px';
+            
+            newNode.innerHTML = `
+                <div class="node-header">
+                    <span class="node-type">${type.replace('-', ' ')}</span>
+                    <div class="node-controls">
+                        <button class="control-btn" onclick="deleteNode('${newNodeId}')" title="Delete">×</button>
+                    </div>
+                </div>
+                <div class="node-content">
+                    <input type="text" class="node-title" value="${title}" onchange="updateNode(this)">
+                    <textarea class="node-description" placeholder="Tell us what we should say here..." onchange="updateNode(this)">${description}</textarea>
+                </div>
+                <button class="add-branch-btn" onclick="addBranch('${newNodeId}')">+</button>
+            `;
+            
+            document.getElementById('flowCanvas').appendChild(newNode);
+            
+            newNode.addEventListener('mousedown', startDrag);
+            newNode.addEventListener('click', selectNode);
+            
+            closeModal();
+            updateConnections();
+        }
+
+        function deleteNode(nodeId) {
+            if (nodeId === 'welcome') {
+                alert('Cannot delete the welcome node!');
+                return;
+            }
+            
+            if (confirm('Are you sure you want to delete this node and its connections?')) {
+                const node = document.getElementById(nodeId);
+                if (node) {
+                    node.remove();
+                    connectionsMap.delete(nodeId);
+                    connectionsMap.forEach((children, parentId) => {
+                        connectionsMap.set(parentId, children.filter(id => id !== nodeId));
+                    });
+                    updateConnections();
+                }
+            }
+        }
+
+        function updateNode(element) {
+            console.log('Node updated:', element.value);
+            if (isCallActive && retellWebClient) {
+                console.log('Updated node content during active call');
+            }
+        }
+
+        // Connection drawing functions
+        function updateConnections() {
+            const existingLines = document.querySelectorAll('.connection-line, .connection-dot, .wait-indicator');
+            existingLines.forEach(line => line.remove());
+            
+            const canvas = document.getElementById('flowCanvas');
+            const nodes = document.querySelectorAll('.node');
+            
+            const connections = [];
+            
+            const welcomeNode = document.getElementById('welcome');
+            const callerTypeNodes = Array.from(nodes).filter(node => 
+                node.classList.contains('caller-type') && node.id !== 'welcome'
+            );
+            
+            callerTypeNodes.forEach(targetNode => {
+                connections.push({
+                    from: welcomeNode,
+                    to: targetNode
+                });
+            });
+            
+            connectionsMap.forEach((children, parentId) => {
+                const parentNode = document.getElementById(parentId);
+                if (parentNode) {
+                    children.forEach(childId => {
+                        const childNode = document.getElementById(childId);
+                        if (childNode) {
+                            connections.push({
+                                from: parentNode,
+                                to: childNode
+                            });
+                        }
+                    });
+                }
+            });
+            
+            connections.forEach(conn => {
+                drawConnection(conn.from, conn.to);
+            });
+        }
+
+        function drawConnection(fromNode, toNode) {
+            const canvas = document.getElementById('flowCanvas');
+            const canvasRect = canvas.getBoundingClientRect();
+            
+            const fromRect = fromNode.getBoundingClientRect();
+            const toRect = toNode.getBoundingClientRect();
+            
+            const fromX = fromRect.left - canvasRect.left + fromRect.width / 2;
+            const fromY = fromRect.bottom - canvasRect.top;
+            const toX = toRect.left - canvasRect.left + toRect.width / 2;
+            const toY = toRect.top - canvasRect.top;
+            
+            const line = document.createElement('div');
+            line.className = 'connection-line';
+            
+            const deltaX = toX - fromX;
+            const deltaY = toY - fromY;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const angle = Math.atan2(deltaY, deltaX) * 180 / Math.PI;
+            
+            line.style.width = distance + 'px';
+            line.style.height = '4px';
+            line.style.left = fromX + 'px';
+            line.style.top = fromY + 'px';
+            line.style.transformOrigin = '0 50%';
+            line.style.transform = `rotate(${angle}deg)`;
+            
+            canvas.appendChild(line);
+            
+            const startDot = document.createElement('div');
+            startDot.className = 'connection-dot';
+            startDot.style.left = (fromX - 6) + 'px';
+            startDot.style.top = (fromY - 6) + 'px';
+            canvas.appendChild(startDot);
+            
+            const endDot = document.createElement('div');
+            endDot.className = 'connection-dot';
+            endDot.style.left = (toX - 6) + 'px';
+            endDot.style.top = (toY - 6) + 'px';
+            canvas.appendChild(endDot);
+            
+            const midX = fromX + deltaX / 2;
+            const midY = fromY + deltaY / 2;
+            
+            const waitIndicator = document.createElement('div');
+            waitIndicator.className = 'wait-indicator';
+            waitIndicator.textContent = 'Wait for Response';
+            waitIndicator.style.left = midX + 'px';
+            waitIndicator.style.top = midY + 'px';
+            waitIndicator.title = 'Waiting for caller response';
+            
+            canvas.appendChild(waitIndicator);
+        }
+
+        // Utility functions
+        function closeModal() {
+            document.getElementById('nodeModal').style.display = 'none';
+            document.getElementById('nodeTitle').value = '';
+            document.getElementById('nodeDescription').value = '';
+        }
+
+        function exportFlow() {
+            const flowData = collectFlowData();
+            const dataStr = JSON.stringify(flowData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'conversation-flow.json';
+            link.click();
+        }
+
+        function clearCanvas() {
+            if (confirm('Are you sure you want to clear the entire canvas?')) {
+                const nodes = document.querySelectorAll('.node:not(#welcome)');
+                nodes.forEach(node => node.remove());
+                
+                const welcomeNode = document.getElementById('welcome');
+                welcomeNode.querySelector('.node-title').value = 'Welcome Message';
+                welcomeNode.querySelector('.node-description').value = 'Hello! How can we help you today?';
+                
+                connectionsMap.clear();
+                updateConnections();
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeDragAndDrop();
+            
+            connectionsMap.set('welcome', ['new-caller', 'existing-client', 'other']);
+            
+            setTimeout(updateConnections, 100);
+            
+            document.getElementById('nodeModal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeModal();
+                }
+            });
+
+            // Load configuration from backend
+            loadConfiguration();
+
+            // Check if Retell SDK is loaded
+            if (typeof RetellWebClient === 'undefined') {
+                console.error('Retell SDK not loaded. Please check your internet connection.');
+            } else {
+                console.log('Retell SDK loaded successfully');
+            }
+        });
+    </script>
+</body>
+</html>
