@@ -2,12 +2,11 @@ import express from 'express';
 import cors from 'cors';
 
 const app = express();
-const port = process.env.PORT || 3001;
 
-// Configure CORS like your working version
+// Configure CORS
 app.use(cors({
   origin: [
-    'https://retell-conversation-flow.vercel.app',
+    'https://retell-flow-backend.vercel.app', // Update this to your new domain
     'http://localhost:3000',
     'http://localhost:5173'
   ],
@@ -27,7 +26,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// Create web call endpoint - matching your working version
+// Create web call endpoint
 app.post('/create-web-call', async (req, res) => {
   try {
     console.log('Creating web call...');
@@ -39,7 +38,7 @@ app.post('/create-web-call', async (req, res) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        agent_id: process.env.RETELL_AGENT_ID, // Use your actual agent ID
+        agent_id: process.env.RETELL_AGENT_ID,
         ...req.body
       })
     });
@@ -52,10 +51,9 @@ app.post('/create-web-call', async (req, res) => {
     
     console.log('Web call created successfully:', webCallResponse.call_id);
     
-    // Return the access token exactly like your working version
     res.json({
       success: true,
-      access_token: webCallResponse.access_token,  // Note: access_token not accessToken
+      access_token: webCallResponse.access_token,
       call_id: webCallResponse.call_id,
       agent_id: webCallResponse.agent_id
     });
@@ -71,12 +69,5 @@ app.post('/create-web-call', async (req, res) => {
 
 app.options('*', cors());
 
-// For Vercel
+// Export for Vercel
 export default app;
-
-// For local development
-if (process.env.NODE_ENV !== 'production') {
-  app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-  });
-}
