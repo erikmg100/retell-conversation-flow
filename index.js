@@ -3,6 +3,9 @@ import cors from 'cors';
 
 const app = express();
 
+// Store conversation flows temporarily (in production, use a database)
+const conversationFlows = new Map();
+
 // Configure CORS - Updated with your correct frontend domain
 app.use(cors({
   origin: [
@@ -26,82 +29,70 @@ app.get('/', (req, res) => {
   });
 });
 
-// Helper function to create dynamic agent
-async function createDynamicAgent(flowData) {
+// Custom LLM Webhook endpoint
+app.post('/llm-webhook', async (req, res) => {
   try {
-    const { conversationFlow, nodes } = flowData;
+    const { call_id, conversation_id, message } = req.body;
     
-    if (!conversationFlow || !nodes) {
-      console.log('No dynamic flow data, using default agent');
-      return null;
+    console.log('LLM Webhook called:', { call_id, conversation_id, message });
+    
+    // Get the conversation flow for this call
+    const flowData = conversationFlows.get(call_id);
+    
+    if (!flowData || !flowData.conversationFlow) {
+      // Fallback response if no flow data
+      return res.json({
+        response: "Hello! How can I help you today?",
+        response_id: Date.now()
+      });
     }
     
-    // Create dynamic prompt for Retell AI
-    const systemPrompt = `You are a helpful AI assistant following a custom conversation flow.
-
-WELCOME MESSAGE: Start every conversation with: "${conversationFlow.welcomeMessage}"
-
-CONVERSATION BRANCHES: After the welcome, listen for user responses and match them to these options:
-${conversationFlow.branches.map((branch, index) => `
-${index + 1}. OPTION: "${branch.title}"
-   KEYWORDS TO LISTEN FOR: ${branch.keywords.join(', ')}
-   EXACT RESPONSE: "${branch.response}"
-`).join('')}
-
-INSTRUCTIONS:
-1. Always start with the welcome message
-2. After welcome, listen carefully to what the user says
-3. Match their response to the closest branch based on keywords
-4. Respond EXACTLY with the configured response text for that branch
-5. If the user's response doesn't clearly match any branch, politely ask them to clarify which option they're interested in
-6. Keep your tone natural and conversational
-7. Don't add extra information beyond what's specified in the responses
-
-Remember: Use the EXACT response text provided for each branch - don't paraphrase or add to it.`;
-
-    console.log('Creating dynamic agent with prompt:', systemPrompt);
-
-    // Create agent using Retell API
-    const agentResponse = await fetch('https://api.retellai.com/v2/agent', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.RETELL_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        agent_name: `Dynamic Flow Agent - ${Date.now()}`,
-        voice_id: "11labs-Adrian",
-        response_engine: {
-          type: "retell_llm",
-          llm_id: "retell-llm-8b-20240615",
-        },
-        begin_message: conversationFlow.welcomeMessage,
-        general_prompt: systemPrompt,
-        general_tools: [],
-        ambient_sound_enabled: false,
-        backchanneling_enabled: true,
-        interruption_sensitivity: 1,
-        language: "en-US",
-        responsiveness: 1,
-        speed: 1,
-      })
+    const { conversationFlow } = flowData;
+    const userMessage = message[message.length - 1]?.content || '';
+    const isFirstMessage = message.length <= 1;
+    
+    let response;
+    
+    if (isFirstMessage) {
+      // First message - use welcome message
+      response = conversationFlow.welcomeMessage;
+    } else {
+      // Find matching branch based on user input
+      const matchedBranch = conversationFlow.branches.find(branch => {
+        return branch.keywords.some(keyword => 
+          userMessage.toLowerCase().includes(keyword.toLowerCase())
+        );
+      });
+      
+      if (matchedBranch) {
+        response = matchedBranch.response;
+      } else {
+        // No match found - ask for clarification
+        const optionsList = conversationFlow.branches
+          .map((branch, index) => `${index + 1}. ${branch.title}`)
+          .join('\n');
+        
+        response = `I'd be happy to help! Could you please clarify which option you're interested in?\n\n${optionsList}`;
+      }
+    }
+    
+    console.log('Sending response:', response);
+    
+    res.json({
+      response: response,
+      response_id: Date.now()
     });
-
-    if (!agentResponse.ok) {
-      throw new Error(`Failed to create agent: ${agentResponse.status} ${agentResponse.statusText}`);
-    }
-
-    const agent = await agentResponse.json();
-    console.log('Created dynamic agent:', agent.agent_id);
-    return agent.agent_id;
-
+    
   } catch (error) {
-    console.error('Error creating dynamic agent:', error);
-    return null;
+    console.error('Error in LLM webhook:', error);
+    res.status(500).json({
+      response: "I'm sorry, I'm having technical difficulties. Please try again.",
+      response_id: Date.now()
+    });
   }
-}
+});
 
-// Create web call endpoint (enhanced with dynamic agent support)
+// Create web call endpoint (updated to use custom LLM)
 app.post('/create-web-call', async (req, res) => {
   try {
     console.log('Creating web call...');
@@ -112,19 +103,41 @@ app.post('/create-web-call', async (req, res) => {
     // Check if we have dynamic flow data
     if (req.body.flowData && req.body.flowData.conversationFlow) {
       console.log('Dynamic flow data detected, creating custom agent...');
-      const dynamicAgentId = await createDynamicAgent(req.body.flowData);
       
-      if (dynamicAgentId) {
-        agentId = dynamicAgentId;
-        console.log('Using dynamic agent:', agentId);
+      // Create custom agent with webhook
+      const agentResponse = await fetch('https://api.retellai.com/v2/agent', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RETELL_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agent_name: `Dynamic Flow Agent - ${Date.now()}`,
+          voice_id: "11labs-Adrian",
+          response_engine: {
+            type: "custom_llm",
+            custom_llm_url: `${process.env.WEBHOOK_BASE_URL || 'https://retell-flow-backend.vercel.app'}/llm-webhook`
+          },
+          begin_message: req.body.flowData.conversationFlow.welcomeMessage,
+          ambient_sound_enabled: false,
+          backchanneling_enabled: true,
+          interruption_sensitivity: 1,
+          language: "en-US",
+          responsiveness: 1,
+          speed: 1,
+        })
+      });
+
+      if (agentResponse.ok) {
+        const agent = await agentResponse.json();
+        agentId = agent.agent_id;
+        console.log('Created custom agent:', agentId);
       } else {
-        console.log('Failed to create dynamic agent, falling back to default agent:', agentId);
+        console.error('Failed to create custom agent, using default');
       }
-    } else {
-      console.log('No dynamic flow data, using default agent:', agentId);
     }
     
-    // Create web call with the chosen agent
+    // Create web call
     const response = await fetch('https://api.retellai.com/v2/create-web-call', {
       method: 'POST',
       headers: {
@@ -148,6 +161,12 @@ app.post('/create-web-call', async (req, res) => {
 
     const webCallResponse = await response.json();
     
+    // Store the flow data for this call ID
+    if (req.body.flowData) {
+      conversationFlows.set(webCallResponse.call_id, req.body.flowData);
+      console.log('Stored flow data for call:', webCallResponse.call_id);
+    }
+    
     console.log('Web call created successfully:', webCallResponse.call_id);
     
     res.json({
@@ -156,6 +175,7 @@ app.post('/create-web-call', async (req, res) => {
       call_id: webCallResponse.call_id,
       agent_id: webCallResponse.agent_id,
       flow_type: req.body.flowData ? 'dynamic' : 'default',
+      webhook_url: req.body.flowData ? `${process.env.WEBHOOK_BASE_URL || 'https://retell-flow-backend.vercel.app'}/llm-webhook` : null,
       flow_summary: req.body.flowData ? {
         welcome_message: req.body.flowData.conversationFlow?.welcomeMessage,
         branches_count: req.body.flowData.conversationFlow?.branches?.length || 0,
